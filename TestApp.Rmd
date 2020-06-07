@@ -1,0 +1,67 @@
+---
+title: "Sample Basic Analysis"
+author: "Tim Hogan"
+date: "5/18/2020"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(magrittr)
+```
+
+```{r,echo=F}
+testdata <- read.csv("testfile.csv")[,-1]
+testdata$Date <- mdy(testdata$Date)
+testdata <- testdata %>% group_by(Country_Region) %>% 
+  mutate(ConChanged = Confirmed-lag(Confirmed,default=0),
+         DeathChanged = Deaths-lag(Deaths,default=0),
+         RecChanged = Recovered-lag(Recovered,default=0)) %>% ungroup()
+
+
+test <- testdata %>% pivot_longer(cols=c("Confirmed","Deaths","Recovered"),names_to="Type",values_to="Value")
+countrylist <- sort(unique(testdata$Country_Region))
+group.colors = c(Deaths="red",Recovered="deepskyblue",Confirmed="darkorchid")
+```
+
+## Summary Information
+
+```{r,echo=F}
+basedate <- "2020-05-17"
+current <- testdata %>% filter(Date==basedate) 
+```
+
+<font size ="4"> As of <b>`r basedate`</b>, there are <b>`r sum(current$Confirmed)`</b> Confirmed Cases, <b>`r sum(current$Deaths)`</b> Deaths, and <b>`r sum(current$Recovered)`</b> Recovered Patients in Africa. </font>
+
+## Interactive Summary
+
+```{r,echo=F}
+inputPanel(
+  selectInput("country", label = "Select Country",
+              choices=countrylist,selected= countrylist[1]),
+  
+  selectInput("date", label= "Select Date",
+              choices=testdata$Date,selected= testdata$Date[nrow(testdata)])
+  
+)
+
+
+renderPlot({
+  test %>% filter(Country_Region==input$country) %>% 
+  ggplot() + aes(x=Date,y=Value,color=Type) + geom_point()  + scale_color_manual(values=group.colors) + ylab("Number of People") + labs(title = paste("COVID Summary for",input$country))
+})
+
+renderText({
+  daydata <- testdata %>% filter(Country_Region==input$country&Date==input$date)
+  paste("On", input$date, "in", input$country, "there were", daydata$Confirmed, "Confirmed Cases,",
+        daydata$Recovered,"Recoveries, and",daydata$Deaths,"Deaths. Since the day before, there were", daydata$ConChanged, "new cases,",daydata$RecChanged,"new recoveries, and",daydata$DeathChanged,"new deaths.")
+})
+
+
+# I can also put in the first and last dates but I need to sleep.
+```
+
+
