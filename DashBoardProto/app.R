@@ -6,6 +6,70 @@ library(maptools)
 library(maps)
 library(gridExtra)
 library(grid)
+require(rgeos)
+
+#Read COVID Data
+testdata <- read.csv("testfile.csv")[,-1]
+testdata$Date <- mdy(testdata$Date)
+testdata$Country_Region <- as.character(testdata$Country_Region)
+
+#Read Population Data
+popdata <- read.csv("popdata.csv")
+popdata$Location <- as.character(popdata$Location)
+popdata[popdata$Location=="Congo",]$Location <- "Congo (Brazzaville)"
+popdata[popdata$Location=="Democratic Republic of the Congo",]$Location <- "Congo (Kinshasa)"
+popdata[popdata$Location=="Côte d'Ivoire",]$Location <- "Cote d'Ivoire"
+popdata[popdata$Location=="United Republic of Tanzania",]$Location <- "Tanzania"
+popdata[popdata$Location=="Cabo Verde",]$Location <- "Cape Verde"
+
+
+testdata <- left_join(testdata,popdata,by=c("Country_Region"="Location"))
+
+testdata <- testdata %>% group_by(Country_Region) %>% 
+    mutate(`Case Fatalities` = Deaths/Confirmed,
+           `Deaths per 100k pop` = Deaths/PopTotal*100000,
+           `Cases per 100k pop` = Confirmed/PopTotal*100000,
+           `New Cases` = Confirmed-lag(Confirmed,default=0),
+           `New Deaths` = Deaths-lag(Deaths,default=0),
+           `New Recoveries` = Recovered-lag(Recovered,default=0),
+           `New Deaths per 100k pop` = `New Deaths`/PopTotal*100000,
+           `New Cases per 100k pop` = `New Cases`/PopTotal*100000) %>% ungroup()
+current <- testdata %>% filter(Date==max(testdata$Date))
+
+countrylist <- sort(unique(testdata$Country_Region))
+group.colors = c(Deaths="red4",`New Deaths`="red4",
+                 Recovered="deepskyblue",
+                 `Case Fatalities` = "red4", `Deaths per 100k pop` = "red4",
+                 `Cases per 100k pop` = "darkorchid",
+                 `New Deaths per 100k pop` = "red4",
+                 `New Cases per 100k pop` = "darkorchid",
+                 `New Recoveries`="deepskyblue",
+                 Confirmed="darkorchid",`New Cases`="darkorchid")
+
+tot = colnames(testdata)[c(2:4,7:9)]
+daily = colnames(testdata)[c(10:14)]
+
+data("wrld_simpl")
+afr=wrld_simpl[wrld_simpl$REGION==2,]
+afr@data$id <- afr@data$NAME
+afr <- fortify(afr,region="id")
+afr[afr$id=="Swaziland",]$id <- "Eswatini"
+afr[afr$id=="Congo",]$id <- "Congo (Brazzaville)"
+afr[afr$id=="Democratic Republic of the Congo",]$id <- "Congo (Kinshasa)"
+afr[afr$id=="United Republic of Tanzania",]$id <- "Tanzania"
+afr[afr$id=="Libyan Arab Jamahiriya",]$id <- "Libya"
+
+alldata <- testdata %>% group_by(Date) %>% 
+    summarize(Confirmed = sum(Confirmed),
+              Recovered = sum(Recovered),
+              Deaths = sum(Deaths)) %>%
+    mutate(`New Cases` = Confirmed - lag(Confirmed,default=0),
+           `New Recoveries` = Recovered - lag(Recovered,default=0),
+           `New Deaths` = Deaths - lag(Deaths,default=0)) %>% 
+    pivot_longer(cols=c("Confirmed","Deaths","Recovered",
+                        "New Cases","New Recoveries","New Deaths"),
+                 names_to="Type",values_to="Value")
+
 
 
 ui <- fluidPage(
@@ -17,7 +81,7 @@ ui <- fluidPage(
             h2("Variables"),
             h5("For Country Data (Selected and All Variables) and Maps"),
             selectInput("country", label = "Select Country",
-                        choices=sort(unique(test$Country_Region)),selected= sort(unique(test$Country_Region))[1]),
+                        choices=sort(unique(testdata$Country_Region)),selected= sort(unique(testdata$Country_Region))[1]),
             sliderInput("date", label= "Select Date", 
                         min = min(testdata$Date),max = max(testdata$Date),
                         value = max(testdata$Date)),
@@ -27,11 +91,16 @@ ui <- fluidPage(
             radioButtons("var","Cumulative Variable:",
                          choices=c("Confirmed Cases" = "Confirmed",
                                    "Recovered Patients" = "Recovered",
-                                   "Deaths" = "Deaths")),
+                                   "Deaths" = "Deaths",
+                                   "Case Fatalities" = "Case Fatalities",
+                                   "Deaths per 100k pop" = "Deaths per 100k pop",
+                                   "Cases per 100k pop" = "Cases per 100k pop")),
             radioButtons("var2","Daily Variable:",
                          choices=c("New Cases" = "New Cases",
                                    "New Recoveries" = "New Recoveries",
-                                   "New Deaths" = "New Deaths")),
+                                   "New Deaths" = "New Deaths",
+                                   "New Deaths per 100k pop" = "New Deaths per 100k pop",
+                                   "New Cases per 100k pop" = "New Cases per 100k pop")),
             h2("Summary"),
             h4("Africa Total"),
             h5(paste("As of ", max(testdata$Date),", there are:",sep="")),
@@ -81,6 +150,8 @@ ui <- fluidPage(
                                Some basic numbers will also be displayed at the bottom of the bar!")
                          ),
                 
+                tabPanel("Data Table",DT::dataTableOutput("data")),
+                
                 tabPanel("About",
                          fluidRow( 
                              column(2),
@@ -116,47 +187,6 @@ ui <- fluidPage(
 
 
 server <- function(input, output) {
-    testdata <- read.csv("testfile.csv")[,-1]
-    testdata$Date <- mdy(testdata$Date)
-    testdata$Country_Region <- as.character(testdata$Country_Region)
-    testdata <- testdata %>% group_by(Country_Region) %>% 
-        mutate(`New Cases` = Confirmed-lag(Confirmed,default=0),
-               `New Deaths` = Deaths-lag(Deaths,default=0),
-               `New Recoveries` = Recovered-lag(Recovered,default=0)) %>% ungroup()
-    current <- testdata %>% filter(Date==max(testdata$Date))
-    
-    test <- testdata %>% pivot_longer(cols=c("Confirmed","Deaths","Recovered",
-                                             "New Cases","New Deaths","New Recoveries"),
-                                      names_to="Type",values_to="Value") 
-    countrylist <- sort(unique(testdata$Country_Region))
-    group.colors = c(Deaths="red4",`New Deaths`="red4",
-                     Recovered="deepskyblue",`New Recoveries`="deepskyblue",
-                     Confirmed="darkorchid",`New Cases`="darkorchid")
-    
-    tot = c("Deaths","Recovered","Confirmed")
-    daily = c("New Recoveries","New Deaths","New Cases")
-    
-    data("wrld_simpl")
-    afr=wrld_simpl[wrld_simpl$REGION==2,]
-    afr@data$id <- afr@data$NAME
-    afr <- fortify(afr,region="id")
-    afr[afr$id=="Swaziland",]$id <- "Eswatini"
-    afr[afr$id=="Congo",]$id <- "Congo (Brazzaville)"
-    afr[afr$id=="Democratic Republic of the Congo",]$id <- "Congo (Kinshasa)"
-    afr[afr$id=="United Republic of Tanzania",]$id <- "Tanzania"
-    afr[afr$id=="Libyan Arab Jamahiriya",]$id <- "Libya"
-    
-    alldata <- testdata %>% group_by(Date) %>% 
-        summarize(Confirmed = sum(Confirmed),
-                  Recovered = sum(Recovered),
-                  Deaths = sum(Deaths)) %>%
-        mutate(`New Cases` = Confirmed - lag(Confirmed,default=0),
-               `New Recoveries` = Recovered - lag(Recovered,default=0),
-               `New Deaths` = Deaths - lag(Deaths,default=0)) %>% 
-        pivot_longer(cols=c("Confirmed","Deaths","Recovered",
-                            "New Cases","New Recoveries","New Deaths"),
-                     names_to="Type",values_to="Value")
-
 
     #TEXT
     output$textall <- renderText({
@@ -192,6 +222,9 @@ server <- function(input, output) {
     })
 
     output$plot <-  renderPlot({ 
+        test <- testdata %>% pivot_longer(cols=c(all_of(tot),all_of(daily)),
+                                          names_to="Type",values_to="Value") 
+        
         
         p1 <- test[which(test$Type%in%tot),] %>% filter(Country_Region==input$country) %>%
             ggplot() + aes(x=Date,y=Value,color=Type) + geom_point()  + geom_line() +
@@ -206,7 +239,11 @@ server <- function(input, output) {
         grid.arrange(p1,p2,nrow=1, top = textGrob(paste("\nCOVID Over Time in", input$country, "- All Variables \n"),gp=gpar(fontsize=20,font=2)))
         })
     
-    output$ploteach <-  renderPlot({ p1 <-test %>% 
+    output$ploteach <-  renderPlot({ 
+        test <- testdata %>% pivot_longer(cols=c(all_of(tot),all_of(daily)),
+                                          names_to="Type",values_to="Value") 
+        
+        p1 <-test %>% 
             filter(Country_Region==input$country&Type==input$var) %>%
             ggplot() + aes(x=Date,y=Value,color=Type) + geom_point()  + geom_line() +
             scale_color_manual(values=group.colors) + ylab("Number of People")  + 
@@ -227,7 +264,7 @@ server <- function(input, output) {
         
         p1 <- afr %>% 
             left_join(testdata[testdata$Date==input$date,],by=c("id"="Country_Region")) %>%
-            ggplot(aes_string(fill=input$var)) + 
+            ggplot(aes_string(fill=paste("`",input$var,"`",sep=""))) + 
             geom_map(map=afr,aes(map_id=id,x=long,y=lat)) + coord_fixed(ratio=1) +
             xlab("") + ylab("") + theme_bw() + scale_fill_viridis_c() +
             labs(title = paste("Cumulative Data"),subtitle=input$var)
@@ -241,21 +278,11 @@ server <- function(input, output) {
             
             grid.arrange(p1,p2,nrow=1, top = textGrob(paste("\n COVID Across Africa as of", input$date, "\n"),gp=gpar(fontsize=20,font=2)))
         
-        
+  
     })
     
+    output$data <- DT::renderDataTable(testdata)
+    
     }
-
-
-testdata %>% group_by(Date) %>% 
-    summarize(Confirmed = sum(Confirmed),
-              Recovered = sum(Recovered),
-              Deaths = sum(Deaths)) %>%
-    mutate(`New Cases` = Confirmed - lag(Confirmed,default=0),
-           `New Recoveries` = Recovered - lag(Recovered,default=0),
-           `New Deaths` = Deaths - lag(Deaths,default=0))
-
-
-testdata %>% filter(Date=="2020-06-01"&Country_Region=="Egypt")
 
 shinyApp(ui = ui, server = server)
