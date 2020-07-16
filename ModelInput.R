@@ -24,6 +24,11 @@ testdata <- testdata %>% group_by(Country_Region) %>%
          Exposure = Date - first(Date) + 1) %>%
   ungroup()
 
+country = "Ghana"
+testdata %>%
+  filter(Country_Region==country) %>%
+  ggplot() + aes(x=Exposure,y=log(Confirmed)) + geom_point(color="darkorchid") + 
+  labs(title = "COVID over Time", subtitle=country) + theme_bw()
 
 #Filter the data to remove repeated imputations on countries.
 #Select variables, calculate the means for each one by country and by region (to reduce to one value)
@@ -63,6 +68,7 @@ model <- ivreg(lncaseload_lastobs ~ lnrchange + lnexpo + lnsdi + lnurban + lnp70
                  lnhhsn + lnihr2018 + lnsqualty + lnasthma + lnhiv  | 
                  lnexpo + lnsdi + lnurban + lnp70p +
                  lnhhsn + lnihr2018 + lnsqualty + lnasthma + lnhiv + lntraffic,data= modeldata)
+
 summary(model) #Coefficients seem close to the model in STATA.
 plot(fitted(model),resid(model)) #Residuals seem weird. Most likely due to imputations.
 qqnorm(resid(model)); qqline(resid(model)) ##QQplot also looks strange.
@@ -94,6 +100,9 @@ lrange = summary(model)$coefficients[,1] -
 urange  = summary(model)$coefficients[,1] + 
   2*summary(model)$coefficients[,2]
 
+ranges <- data.frame(prange=prange,urange=urange,lrange=lrange)
+write.csv(ranges,"ranges.csv")
+
 #Reverse calculate predictions. predict() could probably be used too but I had trouble
 #getting it to work with ranges.
 #If using model3, modify coefficients and numbers.
@@ -123,7 +132,8 @@ for (i in 1:95) {
   colnames(upper)[i] <- paste("forecast",i,sep=".")
 
   #Same as above but with the lower ranges of the coefficient.
-  lower[,i] = exp(lrange[1] + (lrange[2]* filterdata$lnrchange) + (lrange[3])*log(exp(filterdata$lnexpo) + i) +
+  lower[,i] = exp(lrange[1] + (lrange[2]* filterdata$lnrchange) + 
+                     (lrange[3])*log(exp(filterdata$lnexpo) + i) +
     lrange[4]*filterdata$lnsdi + lrange[5]*filterdata$lnurban + lrange[6]*filterdata$lnp70p +
     lrange[7]*filterdata$lnhhsn + lrange[8]*filterdata$lnihr2018 + lrange[9]*filterdata$lnsqualty +
     lrange[10]*filterdata$lnasthma + lrange[11]*filterdata$lnhiv)
@@ -175,10 +185,22 @@ predictiondata <- predictiondata %>%
 afdata <- testdata %>%
   full_join(predictiondata,by=c("Country_Region"="country","Date"))
 
+
 #Save filterdata and modelprojections.
 #I found saving the files rather than generating them in code makes the app run faster.
 #This may be the wrong way to do it though!
-write.csv(filterdata,file="Test/filtereddata.csv",na="NA",row.names=F)
+displaydata <- modeldata %>%
+  select(countryorarea,region,asthma_standardised,hiv_standardised,
+         airtraffic,service_quality2018,urbanization) %>% distinct()
+displaydata[displaydata$countryorarea=="Cabo Verde",]$countryorarea <- "Cape Verde"
+displaydata[displaydata$countryorarea=="Congo",]$countryorarea <- "Congo (Brazzaville)"
+displaydata[displaydata$countryorarea=="Côte d'Ivoire",]$countryorarea <- "Cote d'Ivoire"
+displaydata[displaydata$countryorarea=="Dem. Republic of the Congo",]$countryorarea <- "Congo (Kinshasa)"
+displaydata[displaydata$countryorarea=="Swaziland",]$countryorarea <- "Eswatini"
+displaydata[displaydata$countryorarea=="United Republic of Tanzania",]$countryorarea <- "Tanzania"
+displaydata <- displaydata %>% subset(displaydata$countryorarea %in% unique(testdata$Country_Region))
+
+write.csv(displaydata,file="Test/filtereddata.csv",na="NA",row.names=F)
 write.csv(afdata,file="Test/modelprojections.csv",na="NA",row.names=F)
 
 
@@ -310,7 +332,9 @@ summary(lmemodel2)
 qqnorm(resid(lmemodel2)); qqline(resid(lmemodel2)) ## Residuals have heavy tails.
 plot(fitted(lmemodel2),resid(lmemodel2)) #Smaller values have higher residuals. 
 
+
 #model4 <- stan_lmer(log(Confirmed) ~ Exposure + (Exposure|Country_Region),data=lmemostrecent)
+
 #saveRDS(model4,"stan_fit4.rds")
 model4 <- readRDS("stan_fit4.rds")
 
@@ -323,14 +347,25 @@ forecastdata <- lmedata %>% group_by(Country_Region) %>%
 
 #Make posterior predictions and put them all into a data frame.
 forecastpredict <- posterior_predict(model4,forecastdata)
-estimates <- data.frame(logEst=apply(posterior,2,mean),logVar=apply(posterior,2,sd),
-                        Country = lmedata$Country_Region,Confirmed=lmedata$Confirmed,
-                        Date=lmedata$Date,Exposure=lmedata$Exposure) %>%
 
 forecastestimate <- data.frame(Est=apply(forecastpredict,2,mean),Var=apply(forecastpredict,2,sd),
                                Country=forecastdata$Country_Region,Date=forecastdata$Date,
                                Exposure=forecastdata$Exposure) %>%
   mutate(Upper=Est+2*Var,Lower=Est-2*Var)
+
+## Fourth LME Model
+model5 <- lmer(log(Confirmed) ~ Exposure + (Exposure|Country_Region),
+               lmerecent)
+ggplot()  +  geom_text(aes(label=lmerecent$Country_Region,x=fitted(model5),y=resid(model5)))
+
+test <- lmerecent %>% filter(Country_Region!="Lesotho"&Country_Region!="Namibia"&
+                               Country_Region!="Mayotte"&Country_Region!="Seychelles"&
+                               Country_Region!="Eritrea")
+model6 <- lmer(log(Confirmed) ~ Exposure + (Exposure|Country_Region),
+               test)
+ggplot()  +  geom_text(aes(label=test$Country_Region,x=fitted(model6),y=resid(model6)))
+
+
 #Save file to be put into app
 write.csv(forecastestimate,"Test/forecast.csv") # Save it to be put into app.
 
