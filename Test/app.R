@@ -24,15 +24,22 @@ testdata[testdata$Country_Region=="Tanzania",]$Country_Region <- "United Republi
 
 
 #Read Population Data and clean country names.
-popdata <- read.csv("popdata.csv")
-popdata$Location <- as.character(popdata$Location)
+  popdata <- read.csv("popdata.csv")
+  popdata$Location <- as.character(popdata$Location)
 popdata[popdata$Location=="Congo",]$Location <- "Republic of Congo"
 popdata[popdata$Location=="Côte d'Ivoire",]$Location <- "Ivory Coast"
-popdata[popdata$Location=="Cabo Verde",]$Location <- "Cape Verde"
 
 
 # Read in forecast data.
-forecast <- read.csv("forecast.csv")[,-1]
+forecast <- read.csv("forecastlmenoregion.csv")
+forecast$Date <- ymd(forecast$Date)
+forecast$Country <- as.character(forecast$Country)
+forecast[forecast$Country=="Congo (Brazzaville)",]$Country <- "Republic of Congo"
+forecast[forecast$Country=="Congo (Kinshasa)",]$Country <- "Democratic Republic of the Congo"
+forecast[forecast$Country=="Cote d'Ivoire",]$Country <- "Ivory Coast"
+forecast[forecast$Country=="Eswatini",]$Country <- "Swaziland"
+forecast[forecast$Country=="Guinea-Bissau",]$Country <- "Guinea Bissau"
+forecast[forecast$Country=="Tanzania",]$Country <- "United Republic of Tanzania"
 
 # Left join population data and test data. Calculated values of interest to be displayed.
 testdata <- left_join(testdata,popdata,by=c("Country_Region"="Location"))
@@ -112,7 +119,9 @@ alldata <- testdata %>% group_by(Date) %>%
 plotColors <- data.frame(Var = c("Confirmed","Active","Recovered","Deaths",
                                  "New.Cases","New.Active","New.Recoveries","New.Deaths"),
                          maxCol = c("#645cac", "#449c6c", "#5dbcd2","#dc4c3c",
-                                    "#645cac", "#449c6c", "#5dbcd2","#dc4c3c"))
+                                    "#645cac", "#449c6c", "#5dbcd2","#dc4c3c"),
+                         minCol = c("#cdcaed","#b9edd1","#c9f5ff","#f7d2cd",
+                                    "#cdcaed","#b9edd1","#c9f5ff","#f7d2cd"))
 
 ## UI
 
@@ -127,13 +136,11 @@ ui <- dashboardPage(skin = "green", # Set color and modify the header.
                                  menuSubItem("COVID Africa Summary",tabName="summary"),
                                  menuSubItem("Country Analysis",tabName="country"),
                                  menuSubItem("Dynamic Map Explorer",tabName="mapexp")),
-                        # menuItem("COVID Africa Summary",tabName="summary"),
-                        # menuItem("COVID Country Analysis",tabName="country"),
-                        # menuItem("Dynamic Map Explorer",tabName="mapexp"),
-                        menuItem("Model Projections", tabName = "bigtab", icon = icon("chart-line"),
-                                 menuSubItem("IV Regression Projection",tabName="model"),
-                                 menuSubItem("LME Projection", tabName = "lmer")
-                        ),
+                        # menuItem("Model Projections", tabName = "bigtab", icon = icon("chart-line"),
+                        #          # menuSubItem("IV Regression Projection",tabName="model"),
+                        #          menuSubItem("LME Projection", tabName = "lmer"),
+                        # ),
+                        menuItem("COVID Forecasts",tabName="lmer",icon=icon("chart-line")),
                         menuItem("Data Table", tabName = "data", icon = icon("table")),
                         menuItem("About", tabName = "about", icon = icon("question-circle")),
                         menuItem("Contact Us",
@@ -340,12 +347,66 @@ ui <- dashboardPage(skin = "green", # Set color and modify the header.
                         tabItem(tabName = "lmer",
                                 fluidRow(
                                   box(title="Model Projection",
-                                      plotOutput("lmeplot"),width=8),
-                                  box(title="Select Country",
+                                      highchartOutput("lmeplot",height=750),width=8,height=700),
+                                  column(box(title="Select Country",
                                       selectInput("lmecountry", label = "",
                                                   choices=sort(unique(forecast$Country)),
-                                                  selected= sort(unique(forecast$Country))[1]),width=4)
-                                )),
+                                                  selected= sort(unique(forecast$Country))[1]),width="100%"),
+                                      box(title = span(icon("question-circle"),"What is this?"),
+                                          solidHeader=T,status="primary",collapsible=T, collapsed=T, width="100%",
+                                        "As COVID-19 continues to spread worldwide, different nations have been 
+                                        taking measures to counteract them. However, some areas will be affected 
+                                        differently than others, and will need to prepare in different ways. 
+                                        These forecasting models were developed to predict what the COVID cases may be in the near future."),
+                                      box(title = span(icon("question-circle"),"How were these projections made?"),
+                                          solidHeader=T,status="primary",collapsible=T, collapsed=T, width="100%",
+                                          "With access to data from the JHU COVID-19 Dashboard and Github database, we wanted to make projections 
+                                          using statistical modeling, in order to understand how each aspect of each country could influence the spread of COVID-19. 
+                                          However, we had to keep two things in mind. First, we also had to consider the innate differences of each country, 
+                                          like population. Second, we had to recognize that some countries are more reliable with how frequently they update their data. 
+                                          As such, we wanted to figure out a way to account for the unreliability of some countries into our projections.
+
+                                          Keeping these challenges in mind, we decided to use a Linear Mixed Effects model. The main advantage of this model is that it uses partial pooling. 
+                                          In short, it treats each country separately, but also considers how much data is in each country. If a country frequently updates its COVID Confirmed Cases, 
+                                          our model will use that to drive its predictions. However, if a country doesn’t update as frequently, our model will use other similar countries to govern its predictions. 
+                                          This allows us to still make projections for countries with less counts.
+
+                                          When constructing our model, we also chose to remove the data where no new data was recorded for a country. Given the trends occurring in South Africa, Nigeria, and Egypt, 
+                                          we thought it was unlikely that a country would have no COVID cases on a single day. 
+                                          On top of this, we found over time that many countries would have a long time period where no data was being recorded, only to have a huge “spike” afterwards.
+
+                                          This model was constructed in R, using the lme4 package. We also used the rstanarm package in R to apply simulation to our model, allowing us to predict a range of possible values. 
+                                          We’re also continuing to work on the model to take more country-level data into account, as well as continue to update it for new data. 
+                                          We’re also going to continue to attempt to make models to project case mortality."),
+                                      box(title = span(icon("question-circle"),"How does this graph work?"),
+                                          solidHeader=T,status="primary",collapsible=T, collapsed=T, width="100%",
+                                          "This graph showcases the current COVID trends as well as our models’ forecasted predictions. The purple line is the current COVID trends. 
+                                          Our model predictions are stuck at the end of the X axis (date), and has two parts. The first is a black line, 
+                                          which is the average prediction for our model. We also developed a predictive range where our data is most likely to fall, which is the blue area. 
+                                          Ideally, the COVID data should fall somewhere within that blue range.
+
+                                          You can select which country you want to look at in the top of the menu! Once you do, the graph below will change. 
+                                          You can also mouse over the lines to view the case numbers for each country."),
+                                      box(title = span(icon("question-circle"),"The model seems off. Why?"),
+                                          solidHeader=T,status="primary",collapsible=T, collapsed=T, width="100%",
+                                          "Ideally, the COVID data will fall within the blue lines. However, COVID is relatively unpredictable, 
+                                          so you may find that the recorded cases fall outside the line. 
+                                          Depending on how well the people are able to accommodate or respond to the virus, 
+                                          cases can either suddenly rise or fall. While we can’t predict how people are going to act on a given day, 
+                                          we’re working hard to try to find the overall trends and predict with accuracy. \n \n
+
+                                          We try very hard to avoid cases where our model underpredicts COVID cases and guesses too low. 
+                                          When this happens, we usually study the model to see what went wrong and attempt to correct it for the future. 
+                                          Our model can also overpredict data, and there are usually two reasons behind this. 
+                                          Some countries seem to have time periods where they don’t update their COVID data, 
+                                          and seem to flatline on a number. Our model usually continues to go up, which is what we want it to do, 
+                                          because usually the flatlines are followed by a big spike that we want to predict. 
+                                          On the other hand, if a country is continuing to update its better and has fewer cases than we predict, 
+                                          that means it’s doing better than predicted."),
+                                      
+                                      width=4)
+                                )
+                        ),
                         
                         ## Data Table for viewing data.
                         tabItem(tabName = "data",
@@ -564,7 +625,7 @@ server <- function(input, output) {
     highchart() %>%
       hc_add_series_map(map,current,value=input$var3,joinBy=c("name","Country_Region"),name=input$var3,
                         borderColor="#000000") %>%
-      hc_colorAxis(minColor = "#FFFFFF", maxColor = plotColors[plotColors$Var==input$var3,"maxCol"]) 
+      hc_colorAxis(minColor = plotColors[plotColors$Var==input$var3,"minCol"], maxColor = plotColors[plotColors$Var==input$var3,"maxCol"]) 
     
   })
   
@@ -575,7 +636,7 @@ server <- function(input, output) {
     highchart() %>%
       hc_add_series_map(map,current,value=input$var4,joinBy=c("name","Country_Region"),name=input$var4,
                         borderColor="#000000") %>%
-      hc_colorAxis(minColor = "#FFFFFF", maxColor = plotColors[plotColors$Var==input$var4,"maxCol"]) 
+      hc_colorAxis(minColor = plotColors[plotColors$Var==input$var4,"minCol"], maxColor = plotColors[plotColors$Var==input$var4,"maxCol"]) 
   })
   
   
@@ -585,13 +646,15 @@ server <- function(input, output) {
   
   output$countryconfirmed <- renderValueBox({
     valueBox(color="purple",
-             value=tags$p(paste(datedata()$Confirmed, " (", datedata()$`New Cases`, " new)",sep=""),style="font-size:50%;"),
+             value=tags$p(paste(datedata()$Confirmed, " (", datedata()$`New Cases`, " new)",sep=""),
+                          style="font-size:50%;"),
              tags$p("Confirmed",style="font-size:100%;"))
   })
   
   output$countryactive <- renderValueBox({
     valueBox(color="olive",
-             value=tags$p(paste(datedata()$Active, " (", datedata()$`New Active`, " new)",sep=""),style="font-size:50%;"),
+             value=tags$p(paste(datedata()$Active, " (", datedata()$`New Active`, " new)",sep=""),
+                          style="font-size:50%;"),
              tags$p("Active",style="font-size:100%;"))
   })
   
@@ -739,7 +802,7 @@ server <- function(input, output) {
     highchart() %>%
       hc_add_series_map(map,day,value=input$var5,joinBy=c("name","Country_Region"),name=input$var5,
                         borderColor="#000000") %>%
-      hc_colorAxis(minColor = "#FFFFFF", maxColor = plotColors[plotColors$Var==input$var5,"maxCol"]) 
+      hc_colorAxis(minColor = plotColors[plotColors$Var==input$var5,"minCol"], maxColor = plotColors[plotColors$Var==input$var5,"maxCol"]) 
   })
   
   output$map2 <- renderHighchart({
@@ -752,7 +815,7 @@ server <- function(input, output) {
     highchart() %>%
       hc_add_series_map(map,day,value=input$var6,joinBy=c("name","Country_Region"),name=input$var6,
                         borderColor="#000000") %>%
-      hc_colorAxis(minColor = "#FFFFFF", maxColor = plotColors[plotColors$Var==input$var6,"maxCol"]) 
+      hc_colorAxis(minColor = plotColors[plotColors$Var==input$var6,"minCol"], maxColor = plotColors[plotColors$Var==input$var6,"maxCol"]) 
   })
   
   
@@ -784,25 +847,25 @@ server <- function(input, output) {
   })
   
   ## Plot model for LMER
-  output$lmeplot <- renderPlot({
-    ggplot() + aes(x=Exposure) +
-      geom_ribbon(data=forecast[forecast$Country==input$lmecountry,],
-                  aes(ymin=exp(Lower),ymax=exp(Upper),fill="Projection Range"),alpha=0.3) +
-      geom_point(data=testdata[testdata$Country_Region==input$lmecountry,],
-                 aes(y=Confirmed,color="Confirmed Cases"),color="darkorchid") +
-      geom_point(data=forecast[forecast$Country==input$lmecountry,],
-                 aes(x=Exposure,y=exp(Est),color="Model Projection")) +
-      geom_line(data=forecast[forecast$Country==input$lmecountry,],
-                aes(y=exp(Upper),color="Projection Range")) +
-      geom_line(data=forecast[forecast$Country==input$lmecountry,],
-                aes(y=exp(Lower),color="Projection Range")) + 
-      ggtitle("COVID-19 Model Projections",subtitle = input$lmecountry) +
-      theme_bw() +
-      scale_color_manual(values=modelcolors) + 
-      scale_fill_manual(values=modelcolors) +
-      labs(color = "Legend") + 
-      guides(fill=F) + scale_y_continuous(labels = comma)
-    
+  output$lmeplot <- renderHighchart({
+    highchart() %>%
+      hc_title(text="COVID 19 Model Projections",align="left",margin=20,useHTML=T) %>%
+      hc_subtitle(text = input$lmecountry,align="left") %>%
+      hc_yAxis(title="Cases",min=0) %>% 
+      hc_xAxis(type = "datetime") %>%
+      hc_add_series(testdata[testdata$Country_Region==input$lmecountry,], "line",name="Confirmed Cases", hcaes(Date,Confirmed),color="#645cac",marker=list(symbol="circle")) %>%
+      hc_add_series(forecast[forecast$Country==input$lmecountry,],"line",
+                    name="Forecasted Cases",hcaes(Date,round(exp(Est))),color="#000000",
+                    marker=list(symbol="circle"),id="forecast") %>%
+      hc_add_series(forecast[forecast$Country==input$lmecountry,],"arearange",name="Range",
+                    hcaes(x=Date,low=round(exp(Lower)),high=round(exp(Upper))),color=hex_to_rgba("skyblue",0.2),showInLegend=F,zIndex=-3,
+                    marker=list(symbol="circle"),linkedTo="forecast",lineWidth=1) %>%
+      hc_plotOptions(column = list(
+        dataLabels = list(enabled = F),
+        enableMousTracking = T)
+      ) %>%
+      hc_exporting(enabled=T) %>%
+      hc_size(height=650)    
   })
   
   ## Put up data table.

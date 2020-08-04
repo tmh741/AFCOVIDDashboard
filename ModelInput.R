@@ -6,7 +6,6 @@ library(GGally)
 library(lme4)
 library(rstanarm)
 library(bayesplot)
-library(tseries)
 
 #Read data for model.
 modeldata <- read_dta("covid_data.dta")
@@ -50,8 +49,6 @@ filterdata <- filterdata %>% group_by(countryorarea,region) %>%
             lnasthma=mean(lnasthma,na.rm=T),
             lntraffic=mean(lntraffic,na.rm=T),
             nrows = n())
-
-# Put in NA's.
 filterdata[is.na(filterdata)] <- NA
 
 #Plot distribution of variables. Pivot_longer puts all variables into one column by type.
@@ -254,12 +251,22 @@ filteradj[filteradj$countryorarea=="Dem. Republic of the Congo",]$countryorarea 
 filteradj[filteradj$countryorarea=="Swaziland",]$countryorarea <- "Eswatini"
 filteradj[filteradj$countryorarea=="United Republic of Tanzania",]$countryorarea <- "Tanzania"
 
-#Left join testdata and the country variables to set up model.
-lmedata <- left_join(testdata,filteradj[,-c(2:5)], by = c("Country_Region" = "countryorarea"))
+popdata <- read.csv("Test/popdata.csv")
+popdata$Location <- as.character(popdata$Location)
+popdata[popdata$Location=="United Republic of Tanzania",]$Location <- "Tanzania"
 
-#Get log values to act as comparisons and to match model data. May be unneeded.
-#This is also to see how the STATA data compares to the COVID data.
+
+#Left join testdata and the country variables to set up model.
+lmedata <- left_join(testdata,filteradj[,-c(2:5)], by = c("Country_Region" = "countryorarea")) %>%
+  left_join(popdata,by=c("Country_Region" = "Location")) %>% 
+  mutate(ConfirmedScaled = Confirmed/PopTotal)
+
 lmedata <- lmedata %>% mutate(lnexpo= log(as.numeric(Exposure)),lncaseload_lastobs=log(Confirmed))
+
+lmetestdata <- lmedata%>%filter(`New Cases`>0)
+lmetestdata2 <- lmetestdata %>% filter(Country_Region!="Mayotte"&Country_Region!="Cape Verde")
+lmetestdata3 <- lmetestdata2 %>% group_by(Country_Region) %>% top_n(21,Exposure)
+
 
 #Set up simple linear mixed effects model.
 #Convergence not reached.
@@ -299,6 +306,7 @@ forecastdata <- lmedata %>% group_by(Country_Region) %>%
   arrange(by=Country_Region) %>% 
   mutate(Date=LastDate+Exposure,Exposure=Exposure+LastExposure)
 
+
 forecastpredict <- posterior_predict(model,forecastdata)
 forecastestimate <- data.frame(Est=apply(forecastpredict,2,mean),Var=apply(forecastpredict,2,sd),
                                Country=forecastdata$Country_Region,Date=forecastdata$Date,
@@ -325,49 +333,249 @@ ggplot() + aes(x=Exposure) +
 ## I wanted to test how well the model did using the most recent days.
 
 #Filter out the most recent 21 days for each country.
+lmecleaned <- lmedata %>% group_by(Country_Region) %>% 
+  filter(`New Cases`!=0) %>% 
+  top_n(21,Exposure)
+## Remove some countries
 lmerecent <- lmedata %>% group_by(Country_Region) %>% top_n(21,Exposure)
+lmecleaned <- lmerecent %>% filter(Country_Region!="Cape Verde"&Country_Region!="Western Sahara"&
+                                     Country_Region!="Mayotte"&Country_Region!="Equatorial Guinea"&
+                                     `New Cases`>0)
 lmemodel2 <- lmer(log(Confirmed) ~ Exposure + (Exposure|Country_Region),data=lmerecent)
+
+lmemodel3 <- lmer(log(Confirmed) ~ Exposure + (Exposure|Country_Region), data=lmetestdata3)
+summary(lmemodel3)
+qqnorm(resid(lmemodel3)); qqline(resid(lmemodel3)) ## Residuals have heavy tails.
+plot(fitted(lmemodel3),resid(lmemodel3))
+
+forecastdata$Predict <- exp(predict(lmemodel3,forecastdata,allow.new.levels=T))
+
+countrydisplay="Nigeria"
+ggplot() + aes(x=Date) +
+  geom_line(data=testdata[testdata$Country_Region==countrydisplay,],
+            aes(y=Confirmed),color="darkorchid") +
+  # geom_point(data=estimates[estimates$Country==countrydisplay,],
+  #           aes(y=logEst),size=1.5) + 
+  geom_line(data=forecastdata[forecastdata$Country_Region==countrydisplay,],
+            aes(x=Date,y=Predict)) +
+  labs(title=countrydisplay)
+
+
+forecaststart <- forecastdata %>% select(Country_Region,Exposure.x,Date.x,Region.x,LastExposure,LastDate,
+                                         lnsdi,lnurban,lnp70p,lnhhsn,lnihr2018,lnsqualty) %>% distinct()
+
+colnames(forecaststart)[2] <- "Exposure"
+colnames(forecaststart)[3] <- "Date"
+colnames(forecaststart)[4] <- "Region"
+
+
+
+lmemodel5 <- lmer(log(Confirmed) ~ Exposure + lnsdi + lnurban + lnp70p +
+                 lnhhsn + lnihr2018 + lnsqualty + (Exposure|Country_Region),
+               data=lmetestdata3)
+forecaststart$Predict <- exp(predict(model5,forecaststart,allow.new.levels=T))
+
+countrydisplay="Tanzania"
+ggplot() + aes(x=Date) +
+  geom_line(data=testdata[testdata$Country_Region==countrydisplay,],
+            aes(y=Confirmed),color="darkorchid") +
+  # geom_point(data=estimates[estimates$Country==countrydisplay,],
+  #           aes(y=logEst),size=1.5) + 
+  geom_line(data=forecaststart[forecaststart$Country_Region==countrydisplay,],
+            aes(x=Date,y=Predict)) +
+  labs(title=countrydisplay)
+
+
+model5 <- stan_lmer(log(Confirmed) ~ Exposure + lnsdi + lnurban + lnp70p +
+                 lnhhsn + lnihr2018 + lnsqualty + (Exposure|Country_Region),
+               data=lmetestdata3)
+saveRDS(model5,"stanmodeljul27.rds")
+
+forecastpredict <- posterior_predict(model5,forecaststart %>% na.omit())
+forecaststan <- na.omit(forecaststart)
+
+forecastestimate <- data.frame(Est=apply(forecastpredict,2,mean),Var=apply(forecastpredict,2,sd),
+                               Country=forecaststan$Country_Region,Date=forecaststan$Date) %>% 
+  mutate(Upper=Est+2*Var,Lower=Est-2*Var)
+
+countrydisplay <- "Tanzania"
+ggplot() + aes(x=Date) +
+  geom_ribbon(data=forecastestimate[forecastestimate$Country==countrydisplay,],
+              aes(ymin=exp(Lower),ymax=exp(Upper)),fill="skyblue",alpha=0.3) +
+  geom_line(data=lmedata[lmedata$Country_Region==countrydisplay,],
+            aes(y=Confirmed),color="darkorchid") +
+  # geom_point(data=estimates[estimates$Country==countrydisplay,],
+  #           aes(y=logEst),size=1.5) + 
+  geom_line(data=forecastestimate[forecastestimate$Country==countrydisplay,],
+            aes(x=Date,y=exp(Est))) +
+  labs(title=countrydisplay)
+
+write.csv(forecastestimate,"Test/forecastlmenoregion.csv") # Save it to be put into app.
+
+###
+
+
+model6 <- stan_lmer(log(Confirmed) ~ Exposure + lnsdi + lnurban + lnp70p +
+                      lnhhsn + lnihr2018 + lnsqualty + (Exposure|Region) + (Exposure|Region:Country_Region),
+                    data=lmetestdata3)
+saveRDS(model6,"stanmodeljul27reg.rds")
+forecastpredict <- posterior_predict(model6,forecaststart %>% na.omit())
+forecaststan <- na.omit(forecaststart)
+
+forecastestimate <- data.frame(Est=apply(forecastpredict,2,mean),Var=apply(forecastpredict,2,sd),
+                               Country=forecaststan$Country_Region,Date=forecaststan$Date) %>% 
+  mutate(Upper=Est+2*Var,Lower=Est-2*Var)
+
+countrydisplay <- "Seychelles"
+ggplot() + aes(x=Date) +
+  geom_ribbon(data=forecastestimate[forecastestimate$Country==countrydisplay,],
+              aes(ymin=exp(Lower),ymax=exp(Upper)),fill="skyblue",alpha=0.3) +
+  geom_line(data=lmedata[lmedata$Country_Region==countrydisplay,],
+            aes(y=Confirmed),color="darkorchid") +
+  # geom_point(data=estimates[estimates$Country==countrydisplay,],
+  #           aes(y=logEst),size=1.5) + 
+  geom_line(data=forecastestimate[forecastestimate$Country==countrydisplay,],
+            aes(x=Date,y=exp(Est))) +
+  labs(title=countrydisplay)
+write.csv(forecastestimate,"Test/forecastlmewithregion.csv") # Save it to be put into app.
+
+
+###
+
+nbtest <- glmer.nb(`New Cases` ~ Exposure + (Exposure|Country_Region),data=lmetestdata3)
+qqnorm(resid(nbtest)); qqline(resid(nbtest))
+
+nbtest <- glmer.nb(`New Cases` ~ Exposure + (Exposure|Country_Region/Region),data=lmedata%>%filter(`New Cases`>0))
+
+nbtest <- glmer.nb(`New Cases` ~ Exposure + lnurban + lntraffic + lnasthma + (Exposure|Country_Region),data=lmetestdata)
+
+forecastdata <- lmedata %>% group_by(Country_Region) %>% 
+  mutate(LastExposure=max(Exposure),LastDate=max(Date),LastConfirmed=max(Confirmed)) %>%
+  filter(Exposure<=21) %>% select(Country_Region,Exposure,Region,LastDate,LastExposure,LastConfirmed) %>%
+  arrange(by=Country_Region) %>% 
+  mutate(Date=LastDate+Exposure,Exposure=Exposure+LastExposure) %>% na.omit()
+
+lmetest <- lmer(log(`New Cases`) ~ Exposure + (Exposure|Country_Region),data=lmetestdata2)
+# model5 <- stan_lmer(log(`New Cases`) ~ Exposure + (Exposure|Country_Region),data=lmetestdata2)
+forecastdata$Predict <- exp(predict(lmetest,forecastdata))
+forecastdata <- forecastdata %>% group_by(Country_Region) %>% 
+  mutate(Cumulative = cumsum(Predict),
+         CumScaled = Cumulative + LastConfirmed)
+
+countrydisplay="Egypt"
+ggplot() + aes(x=Date) +
+  geom_line(data=testdata[testdata$Country_Region==countrydisplay,],
+            aes(y=Confirmed),color="darkorchid") +
+  # geom_point(data=estimates[estimates$Country==countrydisplay,],
+  #           aes(y=logEst),size=1.5) + 
+  geom_line(data=forecastdata[forecastdata$Country_Region==countrydisplay,],
+            aes(x=Date,y=CumScaled)) +
+  labs(title=countrydisplay)
+write.csv(forecastdata,"jul27forecast.csv",row.names=F)
+
+
+
+residplotdata <- data.frame(fit = fitted(lmetest),resid=resid(lmetest),Country=lmetestdata2$Country_Region)
+ggplot(residplotdata) + aes(x=fit,y=resid,label=Country) + geom_text()
+
+
+poismodel <- stan_glmer(`New Cases` ~ Exposure + (Exposure|Country_Region),data=lmetestdata3,
+                  family=poisson(link="log"))
+
+
+countrydisplay="South Africa"
+ggplot() + aes(x=Date) +
+  geom_line(data=testdata[testdata$Country_Region==countrydisplay,],
+            aes(y=Confirmed),color="darkorchid") +
+  # geom_point(data=estimates[estimates$Country==countrydisplay,],
+  #           aes(y=logEst),size=1.5) + 
+  geom_line(data=forecastdata[forecastdata$Country_Region==countrydisplay,],
+            aes(x=Date,y=Predict)) +
+  labs(title=countrydisplay)
+
+
+
+nbtest <- glmer.nb(`New Cases` ~ Exposure + (Exposure|Country_Region),data=lmetestdata2)
+
+
+
+
+
+
+lmemodel4 <- lmer(log(`New Cases`) ~ Exposure + (Exposure|Country_Region) + (Exposure|Region),data=lmecleaned)
+
+
+
+lmemodel4 <- lmer(log(ConfirmedScaled) ~ Exposure + (Exposure|Country_Region) + (Exposure|Region),data=lmecleaned)
+qqnorm(resid(lmemodel3)); qqline(resid(lmemodel3)) ## Residuals have heavy tails.
+plot(fitted(lmemodel3),resid(lmemodel3))
+
+forecastdata <- lmedata %>% group_by(Country_Region) %>% 
+  mutate(LastExposure=max(Exposure),LastDate=max(Date)) %>%
+  filter(Exposure<=21) %>% select(Country_Region,Exposure,Region,LastDate,LastExposure) %>%
+  arrange(by=Country_Region) %>% 
+  mutate(Date=LastDate+Exposure,Exposure=Exposure+LastExposure) %>% na.omit() %>% 
+  left_join(popdata,by=c("Country_Region" = "Location"))
+
+forecastdata$Forecasts <- predict(lmemodel4,forecastdata,allow.new.levels=T)
+
+displaycountry = "Tanzania"
+ggplot() + 
+  geom_point(data=lmedata[lmedata$Country_Region==displaycountry,],
+             aes(x=Date,y=Confirmed),color="darkorchid") +
+  geom_line(data=forecastdata[forecastdata$Country_Region==displaycountry,],
+            aes(x=Date,y=exp(Forecasts)*PopTotal))
+
+
+ggplot(lmecleaned) + aes(x=log(`New Cases`),fill=Country_Region) + 
+  geom_histogram() + theme_bw() + facet_wrap(~Region) + theme(legend.position="none")
+
+ggplot(lmecleaned) + aes(x=log(`New Cases`),fill=Country_Region) + 
+  geom_histogram() + theme_bw() + facet_wrap(~Country_Region) + theme(legend.position="none")
+
+
 #Again we're dealing with con
 summary(lmemodel2)
 qqnorm(resid(lmemodel2)); qqline(resid(lmemodel2)) ## Residuals have heavy tails.
-plot(fitted(lmemodel2),resid(lmemodel2)) #Smaller values have higher residuals. 
 
+test <- qqnorm(resid(lmemodel2),plot.it=F)
 
-#model4 <- stan_lmer(log(Confirmed) ~ Exposure + (Exposure|Country_Region),data=lmemostrecent)
+ggplot() + aes(x= test$x, y= test$y,color=lmecleaned$Region,label=lmecleaned$Country_Region) + geom_text() 
 
-#saveRDS(model4,"stan_fit4.rds")
-model4 <- readRDS("stan_fit4.rds")
+ggplot(lmecleaned) + aes(x=fitted(lmemodel2),y=resid(lmemodel2),label=lmecleaned$Country_Region,
+                        color=lmecleaned$Region) + geom_text()
 
-# Create test data for forecasts to be filled in.
+# model3 <- stan_lmer(log(Confirmed) ~ Exposure + (Exposure|Country_Region) + (Exposure|Region),data=lmecleaned)
+# saveRDS(model3,"stan_model717.rds")
+model3 <- readRDS("stan_model717.rds")
 forecastdata <- lmedata %>% group_by(Country_Region) %>% 
   mutate(LastExposure=max(Exposure),LastDate=max(Date)) %>%
-  filter(Exposure<=21) %>% select(Country_Region,Exposure,LastDate,LastExposure) %>%
+  filter(Exposure<=21) %>% select(Country_Region,Exposure,Region,LastDate,LastExposure) %>%
   arrange(by=Country_Region) %>% 
-  mutate(Date=LastDate+Exposure,Exposure=Exposure+LastExposure)
+  mutate(Date=LastDate+Exposure,Exposure=Exposure+LastExposure) %>% na.omit()
 
-#Make posterior predictions and put them all into a data frame.
-forecastpredict <- posterior_predict(model4,forecastdata)
+forecastpredict <- posterior_predict(model3,forecastdata)
 
 forecastestimate <- data.frame(Est=apply(forecastpredict,2,mean),Var=apply(forecastpredict,2,sd),
-                               Country=forecastdata$Country_Region,Date=forecastdata$Date,
-                               Exposure=forecastdata$Exposure) %>%
+                               Country=forecastdata$Country_Region,Date=forecastdata$Date) %>% 
   mutate(Upper=Est+2*Var,Lower=Est-2*Var)
 
-## Fourth LME Model
-model5 <- lmer(log(Confirmed) ~ Exposure + (Exposure|Country_Region),
-               lmerecent)
-ggplot()  +  geom_text(aes(label=lmerecent$Country_Region,x=fitted(model5),y=resid(model5)))
-
-test <- lmerecent %>% filter(Country_Region!="Lesotho"&Country_Region!="Namibia"&
-                               Country_Region!="Mayotte"&Country_Region!="Seychelles"&
-                               Country_Region!="Eritrea")
-model6 <- lmer(log(Confirmed) ~ Exposure + (Exposure|Country_Region),
-               test)
-ggplot()  +  geom_text(aes(label=test$Country_Region,x=fitted(model6),y=resid(model6)))
+countrydisplay <- unique(lmedata$Country_Region)[]
+countrydisplay <- "Seychelles"
+ggplot() + aes(x=Date) +
+   geom_ribbon(data=forecastestimate[forecastestimate$Country==countrydisplay,],
+               aes(ymin=exp(Lower),ymax=exp(Upper)),fill="skyblue",alpha=0.3) +
+  geom_line(data=testdata[testdata$Country_Region==countrydisplay,],
+             aes(y=Confirmed),color="darkorchid") +
+  # geom_point(data=estimates[estimates$Country==countrydisplay,],
+  #           aes(y=logEst),size=1.5) + 
+  geom_line(data=forecastestimate[forecastestimate$Country==countrydisplay,],
+             aes(x=Date,y=exp(Est))) +
+  labs(title=countrydisplay)
 
 
 #Save file to be put into app
-write.csv(forecastestimate,"Test/forecast.csv") # Save it to be put into app.
+write.csv(forecastestimate,"Test/forecastlmenoregion.csv") # Save it to be put into app.
 
 
   
