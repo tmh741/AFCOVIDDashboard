@@ -7,9 +7,6 @@ library(lme4)
 library(rstanarm)
 library(bayesplot)
 
-#Read data for model.
-modeldata <- read_dta("covid_data.dta")
-
 #Read COVID data. 
 # "Test" is the folder that has the app. Will change it soon! 
 testdata <- read.csv("Test/testfile.csv")[,-1]
@@ -33,8 +30,7 @@ testdata %>%
 #Filter the data to remove repeated imputations on countries.
 #Select variables, calculate the means for each one by country and by region (to reduce to one value)
 #Then see how many rows they had in the original data.
-filterdata <- modeldata %>% select(countryorarea, region,lnrchange,lncaseload_lastobs,lnexpo,
-                                   lnsdi,lnurban,lnp70p,lnhhsn,lnihr2018,lnsqualty,lnasthma,lnhiv,lntraffic)
+filterdata <- read.csv("covid_data.csv")
 
 filterdata <- filterdata %>% group_by(countryorarea,region) %>% 
   summarize(lnrchange=mean(lnrchange,na.rm=T),
