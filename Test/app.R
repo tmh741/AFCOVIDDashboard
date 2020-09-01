@@ -24,8 +24,8 @@ testdata[testdata$Country_Region=="Tanzania",]$Country_Region <- "United Republi
 
 
 #Read Population Data and clean country names.
-  popdata <- read.csv("popdata.csv")
-  popdata$Location <- as.character(popdata$Location)
+popdata <- read.csv("popdata.csv")
+popdata$Location <- as.character(popdata$Location)
 popdata[popdata$Location=="Congo",]$Location <- "Republic of Congo"
 popdata[popdata$Location=="Côte d'Ivoire",]$Location <- "Ivory Coast"
 
@@ -40,6 +40,16 @@ forecast[forecast$Country=="Cote d'Ivoire",]$Country <- "Ivory Coast"
 forecast[forecast$Country=="Eswatini",]$Country <- "Swaziland"
 forecast[forecast$Country=="Guinea-Bissau",]$Country <- "Guinea Bissau"
 forecast[forecast$Country=="Tanzania",]$Country <- "United Republic of Tanzania"
+
+forecastw <- read.csv("forecastlmewithregion.csv")
+forecastw$Date <- ymd(forecastw$Date)
+forecastw$Country <- as.character(forecastw$Country)
+forecastw[forecastw$Country=="Congo (Brazzaville)",]$Country <- "Republic of Congo"
+forecastw[forecastw$Country=="Congo (Kinshasa)",]$Country <- "Democratic Republic of the Congo"
+forecastw[forecastw$Country=="Cote d'Ivoire",]$Country <- "Ivory Coast"
+forecastw[forecastw$Country=="Eswatini",]$Country <- "Swaziland"
+forecastw[forecastw$Country=="Guinea-Bissau",]$Country <- "Guinea Bissau"
+forecastw[forecastw$Country=="Tanzania",]$Country <- "United Republic of Tanzania"
 
 # Left join population data and test data. Calculated values of interest to be displayed.
 testdata <- left_join(testdata,popdata,by=c("Country_Region"="Location"))
@@ -346,8 +356,11 @@ ui <- dashboardPage(skin = "green", # Set color and modify the header.
                         ## Model Projections for Linear Mixed Effects Model.
                         tabItem(tabName = "lmer",
                                 fluidRow(
-                                  box(title="Model Projection",
-                                      highchartOutput("lmeplot",height=750),width=8,height=700),
+                                  tabBox(title="COVID Forecasts", side = "right",
+                                         height=700,selected = "Standard", width=8,
+                                         tabPanel("Standard",highchartOutput("lmeplot",height=650)),
+                                         tabPanel("Regional",highchartOutput("lmeregionplot",height=650))),
+                                  
                                   column(box(title="Select Country",
                                       selectInput("lmecountry", label = "",
                                                   choices=sort(unique(forecast$Country)),
@@ -387,7 +400,7 @@ ui <- dashboardPage(skin = "green", # Set color and modify the header.
 
                                           You can select which country you want to look at in the top of the menu! Once you do, the graph below will change. 
                                           You can also mouse over the lines to view the case numbers for each country."),
-                                      box(title = span(icon("question-circle"),"The model seems off. Why?"),
+                                      box(title = span(icon("question-circle"),"The model seems more off for some countries than others. Why?"),
                                           solidHeader=T,status="primary",collapsible=T, collapsed=T, width="100%",
                                           "Ideally, the COVID data will fall within the blue lines. However, COVID is relatively unpredictable, 
                                           so you may find that the recorded cases fall outside the line. 
@@ -826,26 +839,6 @@ server <- function(input, output) {
       hc_colorAxis(minColor = "#edf8e8", maxColor = "#065a2f") 
   })
   
-  ## Plot model for IVREG.
-  output$plotmodel <- renderPlot({
-    modelproj %>% 
-      filter(Country_Region==input$modelcountry) %>%
-      ggplot() + aes(x=Date) + 
-      geom_ribbon(aes(ymin=lower,ymax=upper, fill="Projection Range"),alpha=0.3) +
-      geom_line(aes(y=prediction,color="Model Projection"), size = 1.5,linetype="dotted") +
-      geom_point(data=testdata[testdata$Country_Region==input$modelcountry,],
-                 aes(y=Confirmed,color="Confirmed Cases")) + 
-      geom_line(aes(y=upper,color="Projection Range")) +
-      geom_line(aes(y=lower,color="Projection Range")) + 
-      theme_bw() +
-      ylab("Cases") + 
-      ggtitle("COVID-19 Model Projections",subtitle = input$modelcountry) +
-      scale_color_manual(values=modelcolors) + 
-      scale_fill_manual(values=modelcolors) +
-      labs(color = "Legend") +
-      guides(fill=F) + scale_y_continuous(labels = comma)
-  })
-  
   ## Plot model for LMER
   output$lmeplot <- renderHighchart({
     highchart() %>%
@@ -867,6 +860,28 @@ server <- function(input, output) {
       hc_exporting(enabled=T) %>%
       hc_size(height=650)    
   })
+  
+  output$lmeregionplot <- renderHighchart({
+    highchart() %>%
+      hc_title(text="COVID 19 Model Projections",align="left",margin=20,useHTML=T) %>%
+      hc_subtitle(text = input$lmecountry,align="left") %>%
+      hc_yAxis(title="Cases",min=0) %>% 
+      hc_xAxis(type = "datetime") %>%
+      hc_add_series(testdata[testdata$Country_Region==input$lmecountry,], "line",name="Confirmed Cases", hcaes(Date,Confirmed),color="#645cac",marker=list(symbol="circle")) %>%
+      hc_add_series(forecastw[forecastw$Country==input$lmecountry,],"line",
+                    name="Forecasted Cases",hcaes(Date,round(exp(Est))),color="#000000",
+                    marker=list(symbol="circle"),id="forecast") %>%
+      hc_add_series(forecastw[forecastw$Country==input$lmecountry,],"arearange",name="Range",
+                    hcaes(x=Date,low=round(exp(Lower)),high=round(exp(Upper))),color=hex_to_rgba("skyblue",0.2),showInLegend=F,zIndex=-3,
+                    marker=list(symbol="circle"),linkedTo="forecast",lineWidth=1) %>%
+      hc_plotOptions(column = list(
+        dataLabels = list(enabled = F),
+        enableMousTracking = T)
+      ) %>%
+      hc_exporting(enabled=T) %>%
+      hc_size(height=650)    
+  })
+  
   
   ## Put up data table.
   output$data <- DT::renderDataTable(testdata[,c("Country_Region","Date",
