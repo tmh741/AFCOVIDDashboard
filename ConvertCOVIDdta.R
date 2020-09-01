@@ -1,3 +1,12 @@
+library(tidyverse)
+library(haven)
+library(AER)
+library(lubridate)
+library(GGally)
+library(lme4)
+library(rstanarm)
+library(bayesplot)
+
 #Read covid_dta.
 modeldata <- read_dta("covid_data.dta")
 
