@@ -31,8 +31,6 @@ aggregate2 <- abind(resultlist,along=1,force.array=F)
 aggregate2 <- subset(aggregate2, aggregate2$Country.Region %in% countrylist)
 colnames(aggregate2)[1] <- "Country_Region"
 
-
-
 ## Read in everything from March 22 to June 03. Process is the same as above.
 startdate <- as.Date("2020-03-22")
 enddate <- as.Date(Sys.Date()-1)
@@ -43,7 +41,9 @@ url <- paste("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/c
 
 nfiles <- length(url)
 resultlist <- vector("list",length=nfiles)
+
 for (i in 1:nfiles){
+  print(paste(i,"of",nfiles))
   resultlist[[i]] <- read.csv(url[i])[,c("Country_Region","Confirmed","Deaths","Recovered")]
   resultlist[[i]] <- subset(resultlist[[i]], resultlist[[i]]$Country_Region %in% countrylist)
   resultlist[[i]]$Date <- date[i]

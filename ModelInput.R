@@ -173,11 +173,10 @@ lmetestdata3 <- lmetestdata2 %>% group_by(Country_Region) %>% top_n(21,Exposure)
 
 #First model has no "region" effect
 model5name <- paste("stanmodel",Sys.Date(),".rds",sep="")
-# model5 <- stan_lmer(log(Confirmed) ~ Exposure + lnsdi + lnurban + lnp70p +
-#                  lnhhsn + lnihr2018 + lnsqualty + (Exposure|Country_Region),
-#                data=lmetestdata3)
-# saveRDS(model5,model5name)
-model5 <- readRDS("stanmodelaug19.rds")
+model5 <- stan_lmer(log(Confirmed) ~ Exposure + lnsdi + lnurban + lnp70p +
+                  lnhhsn + lnihr2018 + lnsqualty + (Exposure|Country_Region),
+                data=lmetestdata3)
+saveRDS(model5,model5name)
 
 
 # Make forecasts with this model.
@@ -207,23 +206,24 @@ write.csv(forecastestimate,"Test/forecastlmenoregion.csv") # Save it to be put i
 
 #Model with regional effects.
 model6name <- paste("stanmodelregional",Sys.Date(),".rds",sep="")
-# model6 <- stan_lmer(log(Confirmed) ~ Exposure + lnsdi + lnurban + lnp70p +
-#                       lnhhsn + lnihr2018 + lnsqualty + (Exposure|Region) + (Exposure|Region:Country_Region),
-#                     data=lmetestdata3)
+model6 <- lmer(log(Confirmed) ~ Exposure + lnsdi + lnurban + lnp70p +
+                       lnhhsn + lnihr2018 + lnsqualty + (Exposure|Region) + (Exposure|Region:Country_Region),
+                     data=lmetestdata3)
 # saveRDS(model6,model6name)
 model6 <- readRDS("stanmodeljul27reg.rds")
 
 #Forecasts.
+test = predict(model6,forecaststart%>%na.omit())
+
+forecastestimate <- data.frame(Est=test,Country=forecaststan$Country_Region,Region=forecaststan$Region,Date=forecaststan$Date)
+
 forecastpredict <- posterior_predict(model6,forecaststart %>% na.omit())
-forecaststan <- na.omit(forecaststart)
 forecastestimate <- data.frame(Est=apply(forecastpredict,2,mean),Var=apply(forecastpredict,2,sd),
                                Country=forecaststan$Country_Region,Date=forecaststan$Date) %>% 
   mutate(Upper=Est+2*Var,Lower=Est-2*Var)
 
-countrydisplay <- "Egypt"
+countrydisplay <- "Tanzania"
 ggplot() + aes(x=Date) +
-  geom_ribbon(data=forecastestimate[forecastestimate$Country==countrydisplay,],
-              aes(ymin=exp(Lower),ymax=exp(Upper)),fill="skyblue",alpha=0.3) +
   geom_line(data=lmedata[lmedata$Country_Region==countrydisplay,],
             aes(y=Confirmed),color="darkorchid") +
   # geom_point(data=estimates[estimates$Country==countrydisplay,],
@@ -253,6 +253,28 @@ lmemodel4 <- lmer(log(`New Cases`) ~ Exposure + (Exposure|Country_Region) + (Exp
 lmemodel4 <- lmer(log(ConfirmedScaled) ~ Exposure + (Exposure|Country_Region) + (Exposure|Region),data=lmecleaned)
 qqnorm(resid(lmemodel3)); qqline(resid(lmemodel3)) ## Residuals have heavy tails.
 plot(fitted(lmemodel3),resid(lmemodel3))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

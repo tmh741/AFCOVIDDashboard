@@ -180,7 +180,7 @@ ui <- dashboardPage(skin = "green", # Set color and modify the header.
                                            value=tags$p(paste(sum(current$Confirmed), " (+", sum(current$`New Cases`), ")",sep=""),style="font-size:50%;"),
                                            tags$p("Confirmed",style="font-size:100%;")),
                                   valueBox(color="olive",
-                                           value=tags$p(paste(sum(current$Active), " (+", sum(current$`New Active`), ")",sep=""),style="font-size:50%;"),
+                                           value=tags$p(paste(sum(current$Active), ifelse(sum(current$`New Active`)>=0,"(+","("), sum(current$`New Active`), ")",sep=""),style="font-size:50%;"),
                                            tags$p("Active",style="font-size:100%;")),
                                   valueBox(color="light-blue",
                                            value=tags$p(paste(sum(current$Recovered), " (+", sum(current$`New Recoveries`), ")",sep=""),style="font-size:50%;"),
@@ -638,7 +638,8 @@ server <- function(input, output) {
     highchart() %>%
       hc_add_series_map(map,current,value=input$var3,joinBy=c("name","Country_Region"),name=input$var3,
                         borderColor="#000000") %>%
-      hc_colorAxis(minColor = plotColors[plotColors$Var==input$var3,"minCol"], maxColor = plotColors[plotColors$Var==input$var3,"maxCol"]) 
+      hc_colorAxis(minColor = plotColors[plotColors$Var==input$var3,"minCol"], 
+                   maxColor = plotColors[plotColors$Var==input$var3,"maxCol"]) 
     
   })
   
