@@ -1,4 +1,3 @@
-library(countrycode)
 library(abind)
 library(magrittr)
 library(tidyverse)
@@ -43,7 +42,6 @@ nfiles <- length(url)
 resultlist <- vector("list",length=nfiles)
 
 for (i in 1:nfiles){
-  print(paste(i,"of",nfiles))
   resultlist[[i]] <- read.csv(url[i])[,c("Country_Region","Confirmed","Deaths","Recovered")]
   resultlist[[i]] <- subset(resultlist[[i]], resultlist[[i]]$Country_Region %in% countrylist)
   resultlist[[i]]$Date <- date[i]
@@ -62,10 +60,10 @@ regionlist <- data.frame(Region=c(rep("North",7),rep("South",10),
 #Combine data and save it.
 alldata <- rbind(aggregate2,aggregate) %>% left_join(regionlist,by="Country_Region")
 
-write.csv(alldata, "Test/testfile.csv")
+write.csv(alldata, "ModelData/testfile.csv")
 
 #Write Population Data as a smaller .csv to decrease run time of app.
 popdata <- read.csv("WPP2019_TotalPopulationBySex.csv") %>% filter(Time==2020) %>% 
   select(Location,PopTotal) %>% distinct()
 popdata[popdata$Location=="Cabo Verde",]$PopTotal <-popdata[popdata$Location=="Cabo Verde",]$PopTotal*1000
-write.csv(popdata, file="Test/popdata.csv",row.names = F)
+write.csv(popdata, file="ModelData/popdata.csv",row.names = F)
