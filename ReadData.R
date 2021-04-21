@@ -61,6 +61,8 @@ regionlist <- data.frame(Region=c(rep("North",7),rep("South",10),
 alldata <- rbind(aggregate2,aggregate) %>% left_join(regionlist,by="Country_Region")
 
 write.csv(alldata, "ModelData/testfile.csv")
+write.csv(alldata, "Test/testfile.csv")
+
 
 #Write Population Data as a smaller .csv to decrease run time of app.
 popdata <- read.csv("WPP2019_TotalPopulationBySex.csv") %>% filter(Time==2020) %>% 
