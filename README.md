@@ -27,3 +27,7 @@ By building it in STAN, we can also apply a Bayesian framework for our model, in
 into our projections. However, it makes it run for a very long time.
 Lastly, we also made sure to include very recent COVID data into our measurements. This way,
 we could make sure we're only capturing really recent trends. 
+
+# Licensing
+
+The AF COVID Dashboard available under The MIT License, which means it's free for commercial and non-commercial use. Attribution is not required, but appreciated. 
