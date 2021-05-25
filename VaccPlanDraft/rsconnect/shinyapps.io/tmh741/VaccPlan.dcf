@@ -1,0 +1,12 @@
+name: VaccPlan
+title: VaccPlan
+username:
+account: tmh741
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 4183958
+bundleId: 4638730
+url: https://tmh741.shinyapps.io/VaccPlan/
+when: 1621966526.17984
+asMultiple: FALSE
+asStatic: FALSE

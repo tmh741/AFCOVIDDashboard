@@ -1,0 +1,16 @@
+﻿Position,Number per 8-h Shift_(4 Stations),Number per 16-h Day_(4 Stations),Number per 8-h Shift_(8 Stations),Number per 16-h Day_(8 Stations),Experience
+Forms (VIS) Distribution,2,4,3,6,Nonmedical
+Orientation/Information,2,4,3,6,Nonmedical
+Medical Screeners,1,2,1,2,Medical:Nurse
+Clinic Flow; Reviewer/Form Helpers,4,8,7,14,"Nonmedical: to assist with form completion, collection, and clinic flow"
+Vaccinators,4,8,9,18,"RNs, LPN, others as dictated by state laws"
+Vaccine Preparer/Supply to Station,4,8,8,16,"LPN, MT"
+Exit Review,2,4,4,8,RN or public health person for questions/instruction/observation and form verification
+Medical Records/Daily Entry,5,10,8,16,"Nonmedical, Vaccine info and doses adminstered ata processed"
+Clinic Manager,1,2,1,2,Nonmedical Public Health/Imm Programs Personnel
+Supply <anager,2,4,2,4,Nonmedical
+Security,2,4,4,8,Non-public health resource
+Translator,One per language,Unknown,At least one per major language,Unknown,Language fluency with training
+Float Staff,1,2,2,4,Nonmedical Volunteers
+EMT,On Call,,1,2,Medical
+IT Support,On Call,,On Call,,Nonmedical
