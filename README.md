@@ -28,6 +28,21 @@ into our projections. However, it makes it run for a very long time.
 Lastly, we also made sure to include very recent COVID data into our measurements. This way,
 we could make sure we're only capturing really recent trends. 
 
+# Vaccine Planner
+
+Since most of Africa have not received many vaccines, we wanted to create a page to help them
+plan vaccine setup and funding for effective stations. This way, when they receive vaccines,
+they'll have planned their strategy and will be prepared to be effective.
+We designed this page using CDC guidelines for setting up large-scale distribution stations for vaccines.
+(link here: https://www.cdc.gov/h1n1flu/vaccination/pdf/A_Wortley_H1N1_sample_clinic.pdf)
+
+The page itself is pretty simple! It gives you the recommended layout for vaccine clinics,
+which have a certain number of people, stations, and an expected vaccine output.
+As a user, you can change the number of clinics you want to set up, and it will calculate
+how many people you need, and how much it'll cost.
+
+I'm still setting up the budget amounts (they're adjustable too!), so this is a first draft!
+
 # Licensing
 
 The AF COVID Dashboard available under The MIT License, which means it's free for commercial and non-commercial use. Attribution is not required, but appreciated. 
