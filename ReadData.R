@@ -1,7 +1,4 @@
-library(abind)
-library(magrittr)
-library(tidyverse)
-library(lubridate)
+source("InstallPackages.R")
 
 #Create List of Countries to filter out.
 countrylist <- c("Algeria","Egypt","Libya","Mauritania","Morocco","Sahrawi Arab Democratic Republic","Tunisia", "Western Sahara",
@@ -11,6 +8,7 @@ countrylist <- c("Algeria","Egypt","Libya","Mauritania","Morocco","Sahrawi Arab 
                  "Burundi","Cameroon","Central African Republic","Chad","Congo (Kinshasa)","Congo (Brazzaville)", "Equatorial Guinea","Gabon","Sao Tome and Principe")
 
 ## Read in everything from Jan 22 to March 21.
+# File format changes afterwards so this is for consistency.
 startdate <- as.Date("2020-01-22")
 enddate <- as.Date("2020-03-21")
 date <- as.Date(startdate:enddate,origin="1970-01-01")
@@ -18,13 +16,14 @@ date <- strftime(date,"%m-%d-%Y")
 url <- paste("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_daily_reports/", 
              date, ".csv",sep="")
 
-#Basic idea: Read from URL, attaching the date as a CSV.
+# Reach each .csv table into an array.
 nfiles <- length(url)
 resultlist <- vector("list",length=nfiles)
 for (i in 1:nfiles){
   resultlist[[i]] <- read.csv(url[i])[,c("Country.Region","Confirmed","Deaths","Recovered")]
   resultlist[[i]]$Date <- date[i]
 }
+
 #Aggregate lists into one data frame using abind.
 aggregate2 <- abind(resultlist,along=1,force.array=F)
 aggregate2 <- subset(aggregate2, aggregate2$Country.Region %in% countrylist)
@@ -48,6 +47,7 @@ for (i in 1:nfiles){
 }
 aggregate <- abind(resultlist,along=1,force.array=F)
 
+# List all countries for consistency.
 regionlist <- data.frame(Region=c(rep("North",7),rep("South",10),
                                   rep("West",16),rep("East",14),
                                   rep("Central",9)),
@@ -57,9 +57,10 @@ regionlist <- data.frame(Region=c(rep("North",7),rep("South",10),
                                           "Comoros","Djibouti","Ethiopia","Eritrea","Kenya","Madagascar","Mauritius","Rwanda","Seychelles","Somalia","South Sudan","Sudan","Tanzania","Uganda",
                                           "Burundi","Cameroon","Central African Republic","Chad","Congo (Kinshasa)","Congo (Brazzaville)", "Equatorial Guinea","Gabon","Sao Tome and Principe"))
 
-#Combine data and save it.
+# Combine all files.
 alldata <- rbind(aggregate2,aggregate) %>% left_join(regionlist,by="Country_Region")
 
+# Update new files in every stage.
 write.csv(alldata, "ModelData/testfile.csv")
 write.csv(alldata, "Test/testfile.csv")
 

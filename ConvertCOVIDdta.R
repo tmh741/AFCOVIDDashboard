@@ -1,12 +1,4 @@
-library(tidyverse)
-library(haven)
-library(AER)
-library(lubridate)
-library(GGally)
-library(lme4)
-library(rstanarm)
-library(bayesplot)
-
+source("InstallPackages.R")
 
 modeldata <- read_dta("covid_data.dta")
 
@@ -14,13 +6,11 @@ filterdata <- modeldata %>% select(countryorarea, region,lnrchange,lncaseload_la
                                    lnsdi,lnurban,lnp70p,lnhhsn,lnihr2018,lnsqualty,lnasthma,lnhiv,lntraffic)
 write.csv(filterdata,"covid_data.csv",row.names=F)
 
-##covid_data.dta is a large file that includes the original countries, all the UN data initially considered,
-# data transformations, and much more. The file I use uses two things: countries, and log transformed 
-# versions of finally selected data from the UN Database.
-# To lower the size for convenience, I made covid_data.csv include only the rows used in the code, as listed above.
+##covid_data.dta is massive and contains a lot of UN data. 
+# For analysis, I subsetted a small portion.
+# Below I'll describe each of the rows.
 
 # countryorarea and region are the Country Name and Region.
-
 # lnrchange is a value calculated based on the log one-week change of COVID between two weeks. It's included mostly
 # to be used as a reference.
 # lnexpo is the ln of the number of days since the first recorded COVID case in the country.
